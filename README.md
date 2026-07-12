@@ -19,25 +19,38 @@ Any static file server works (`python -m http.server`, VS Code Live Server, etc.
 
 ## How it works
 
+News is **prefetched server-side**, not fetched by every visitor's browser. A GitHub Action
+runs every 15 minutes, fetches all feeds directly (no CORS issue server-side, no proxy needed),
+and commits the result to `news.json`. The page just loads that file — typically in a few
+milliseconds, since it's a small static JSON file on the same origin.
+
 - `index.html` – page shell (header, tabs, search, grid)
 - `styles.css` – dark neon theme, responsive card grid
-- `feeds.js` – **the list of news sources** (edit this to customize)
-- `app.js` – fetches each feed through a free proxy, parses the response, then merges,
-  de-duplicates (by normalized title, so the same story from multiple outlets collapses),
-  sorts newest-first, and renders cards. Requests are run at limited concurrency so the free
-  proxies don't rate-limit us. Results are cached in `localStorage` for 15 minutes so reloads
-  are instant and content still shows if a source is temporarily down. Feeds auto-refresh every
-  15 minutes, or hit **Refresh**.
+- `feeds.js` – **the list of news sources** (edit this to customize; shared by the browser and
+  the prefetch script)
+- `scripts/fetch-news.js` – Node script that fetches every feed and writes `news.json`
+- `.github/workflows/update-news.yml` – runs the script every 15 minutes and commits the result
+- `news.json` – the prefetched data the page actually loads (auto-generated, don't hand-edit)
+- `app.js` – loads `news.json`, de-duplicates (by normalized title, so the same story reported
+  by multiple outlets collapses), sorts newest-first, and renders cards. Also caches the last
+  good result in `localStorage` so a reload paints instantly even before the network request
+  resolves. Auto-refreshes every 15 minutes, or hit **Refresh**.
 
-Because browsers block direct cross-origin RSS fetches (CORS), feeds are routed through public
-proxies, tried in order until one succeeds:
-1. **rss2json** (primary) – returns clean, normalized JSON; the most reliable option.
-2. **allorigins** / **codetabs** – return raw XML, parsed in-browser as a fallback.
+Each category is anchored by a **Google News** query feed, which is far more reliable than
+Reddit/YouTube for this kind of fetching, so no category goes empty even if a couple of sources
+have a bad day. Reddit/YouTube are included as bonus sources.
 
-Each category is also anchored by a **Google News** query feed. Google News is far more
-proxy-friendly than Reddit or YouTube (which proxies often block), so even on a bad day no
-category goes empty. Reddit/YouTube feeds are included as *bonus* sources that show up when
-they can.
+**Fallback:** if `news.json` is ever missing or empty (e.g. you open `index.html` directly via
+`file://` before the site has been deployed, so the browser can't fetch a sibling file), the app
+automatically falls back to fetching all feeds live in the browser through public CORS proxies —
+the original approach, slower and less reliable, but it means the site still works standalone.
+
+## Updating the news data
+
+Locally: `node scripts/fetch-news.js` (needs Node 18+, no npm install required — it only uses
+built-ins). On the deployed site, this runs automatically via GitHub Actions every 15 minutes;
+you can also trigger it manually from the repo's **Actions** tab → "Update news feed" →
+**Run workflow**.
 
 ## Add or remove news sources
 
@@ -73,7 +86,8 @@ It's a static site — drag the folder onto **Netlify Drop**, push to **GitHub P
 
 ## Note on reliability
 
-Public CORS proxies are free but can rate-limit or go down. The multi-proxy fallback plus the
-local cache handles most hiccups. If you later want rock-solid uptime, the natural upgrade is a
-tiny Node/serverless script that fetches the feeds server-side into a `news.json` the page reads —
-the UI wouldn't need to change.
+Because fetching happens server-side in GitHub Actions (not through public CORS proxies), it's
+far more reliable than browser-side fetching — no per-visitor rate limits, and sites like Reddit
+that often block proxies work fine with a direct server request. The live in-browser fallback
+still exists for the `file://` case, and inherits the same proxy caveats described in its own
+code comments.

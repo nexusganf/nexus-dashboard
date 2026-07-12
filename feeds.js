@@ -13,7 +13,7 @@
 // Reddit:   https://www.reddit.com/r/SUBREDDIT/.rss
 // YouTube:  https://www.youtube.com/feeds/videos.xml?channel_id=CHANNEL_ID
 
-window.FEEDS = [
+const FEEDS = [
   // ---------- Gaming news ----------
   { name: "Google News · Gaming", category: "gaming", url: "https://news.google.com/rss/search?q=video+game+news&hl=en-US&gl=US&ceid=US:en" },
   { name: "Polygon",              category: "gaming", url: "https://www.polygon.com/rss/index.xml" },
@@ -39,15 +39,19 @@ window.FEEDS = [
   // ---------- Trailers & video ----------
   { name: "Google News · Trailers",   category: "trailers", url: "https://news.google.com/rss/search?q=game+trailer+reveal+OR+gameplay+trailer&hl=en-US&gl=US&ceid=US:en" },
   { name: "Google News · Anime PV",   category: "trailers", url: "https://news.google.com/rss/search?q=anime+trailer+OR+%22new+anime%22+announced&hl=en-US&gl=US&ceid=US:en" },
-  { name: "IGN (YouTube)",            category: "trailers", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCKy1dAqELo0zrOtPkf0eTMU" }, // bonus
+  { name: "IGN (YouTube)",            category: "trailers", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCKy1dAqELo0zrOtPkf0eTMw" }, // bonus
   { name: "GameSpot (YouTube)",       category: "trailers", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCbu2SsF-Or3Rsn3NxqODImw" }, // bonus
 ];
 
 // Display metadata for each category (label + emoji shown on the tabs).
-window.CATEGORIES = [
+const CATEGORIES = [
   { id: "all",      label: "All",              emoji: "✨" },
   { id: "gaming",   label: "Gaming",           emoji: "🎮" },
   { id: "anime",    label: "Anime & Manga",    emoji: "🎌" },
   { id: "deals",    label: "Deals & Giveaways",emoji: "💰" },
   { id: "trailers", label: "Trailers & Video", emoji: "🎬" },
 ];
+
+// Expose to the browser (script tag) or Node (require), whichever is loading this file.
+if (typeof window !== "undefined") { window.FEEDS = FEEDS; window.CATEGORIES = CATEGORIES; }
+if (typeof module !== "undefined" && module.exports) { module.exports = { FEEDS, CATEGORIES }; }

@@ -21,6 +21,11 @@
   const CACHE_TTL_MS = 15 * 60 * 1000;   // 15 minutes
   const AUTO_REFRESH_MS = 15 * 60 * 1000;
   const PER_FEED_MAX = 20;               // cap items per feed
+  // news.json is prefetched server-side every ~15 min by .github/workflows/update-news.yml
+  // (see scripts/fetch-news.js). Loading it is instant and needs no proxy. The live
+  // multi-proxy fetch below only runs as a fallback if news.json is missing or empty
+  // (e.g. opened via file:// before ever being deployed, or the very first commit).
+  const NEWS_JSON_URL = "news.json";
 
   // ---- State -----------------------------------------------------------------
   let allItems = [];
@@ -228,7 +233,8 @@
     return results;
   }
 
-  async function fetchAll() {
+  // Live multi-proxy fetch — fallback path only, used when news.json isn't available.
+  async function fetchAllLive() {
     setLoading(true);
     el.status.innerHTML = `Fetching ${window.FEEDS.length} sources…`;
 
@@ -262,6 +268,31 @@
     if (failed.length) msg += ` <span class="err">· offline: ${escapeHtml(failed.join(", "))}</span>`;
     el.status.innerHTML = msg;
     setLoading(false);
+  }
+
+  // Primary path — instant, no proxy. Falls back to the live fetch above if news.json
+  // is missing/empty (e.g. opened directly via file:// before ever being deployed).
+  async function fetchNews() {
+    try {
+      const res = await fetch(`${NEWS_JSON_URL}?t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (!json || !Array.isArray(json.items) || !json.items.length) throw new Error("empty news.json");
+
+      allItems = json.items.map((it) => ({ ...it, date: it.ts ? new Date(it.ts) : null }));
+      saveCache(allItems);
+      renderTabs();
+      render();
+
+      let msg = `Showing ${allItems.length} stories from ${json.sourcesOk}/${json.sourcesTotal} sources · feed generated ${timeAgo(new Date(json.generatedAt))}`;
+      if (json.offlineSources && json.offlineSources.length) {
+        msg += ` <span class="err">· offline: ${escapeHtml(json.offlineSources.join(", "))}</span>`;
+      }
+      el.status.innerHTML = msg;
+      setLoading(false);
+    } catch {
+      await fetchAllLive();
+    }
   }
 
   // ---- Cache -----------------------------------------------------------------
@@ -427,29 +458,30 @@
     searchTimer = setTimeout(() => { query = e.target.value.trim(); render(); }, 150);
   });
 
-  el.refresh.addEventListener("click", () => fetchAll());
+  el.refresh.addEventListener("click", () => {
+    setLoading(true);
+    fetchNews();
+  });
 
   // ---- Boot ------------------------------------------------------------------
   function init() {
     renderTabs();
     renderBanner();
     const cached = loadCache();
-    const stale = !cached || cached.age > CACHE_TTL_MS;
     if (cached && cached.items.length) {
       allItems = cached.items;
       renderTabs();
       render();
       const mins = Math.round(cached.age / 60000);
-      el.status.textContent = stale
-        ? `Loaded ${allItems.length} cached stories · refreshing…`
-        : `Showing ${allItems.length} cached stories · updated ${mins}m ago · hit Refresh for the latest`;
+      el.status.textContent = `Showing ${allItems.length} cached stories · updated ${mins}m ago · refreshing…`;
     } else {
       renderSkeletons();
     }
-    // Refresh only if the cache is stale or absent (Refresh button forces it anytime).
-    if (stale) fetchAll();
+    // news.json is a same-origin static file, so this is cheap — always fetch it fresh
+    // on load rather than gating on cache age.
+    fetchNews();
 
-    setInterval(fetchAll, AUTO_REFRESH_MS);
+    setInterval(fetchNews, AUTO_REFRESH_MS);
   }
 
   init();
